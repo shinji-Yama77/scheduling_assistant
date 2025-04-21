@@ -11,6 +11,9 @@ from msgraph.generated.models.body_type import BodyType
 from msgraph.generated.models.location import Location
 from msgraph.generated.models.attendee import Attendee
 from msgraph.generated.models.email_address import EmailAddress
+from msgraph.generated.models.online_meeting_provider_type import OnlineMeetingProviderType
+from msgraph.generated.users.users_request_builder import UsersRequestBuilder
+from kiota_abstractions.base_request_configuration import RequestConfiguration
 
 
 # load environment variables from .env or set them directly here
@@ -48,6 +51,33 @@ async def get_user_info():
         "display_name": user.display_name,
         "email": user.mail or user.user_principal_name
     }
+
+
+async def resolve_email_by_name(client: GraphServiceClient, name: str):
+    try:
+        query_params = UsersRequestBuilder.UsersRequestBuilderGetQueryParameters(
+            filter=f"startswith(givenName, '{name}')",
+        )
+        request_configuration = RequestConfiguration(query_parameters=query_params)
+        result = await client.users.get(request_configuration=request_configuration)
+
+        if result.value and len(result.value) > 0:
+            user = result.value[0]
+            return user.mail or user.user_principal_name
+        else:
+            print("No match found")
+            return None
+    except Exception as e:
+        print(f"error searching for '{name}'")
+        return None
+
+async def resolve_emails_by_names(client: GraphServiceClient, names: list[str]):
+    emails = []
+    for name in names:
+        email = await resolve_email_by_name(client, name)
+        if email:
+            emails.append(email)
+    return emails
 
 async def schedule_meeting(subject, start_date_time, start_time_zone, 
                           end_date_time, end_time_zone, 
@@ -105,7 +135,7 @@ async def schedule_meeting(subject, start_date_time, start_time_zone,
             email_address.address = email
             attendee.email_address = email_address
             event.attendees.append(attendee)
-    
+    event.online_meeting_provider = OnlineMeetingProviderType.TeamsForBusiness
     # Create the event
     created_event = await client.me.events.post(event)
     
@@ -118,7 +148,16 @@ async def schedule_meeting(subject, start_date_time, start_time_zone,
         "web_link": created_event.web_link
     }
 
+async def test1(names: list[str]):
+    emails = await resolve_emails_by_names(client, names)
+    print("\n✅ Resolved Emails:")
+    for name, email in zip(names, emails):
+        print(f"{name} → {email}")
+
 # For testing the module directly
 if __name__ == "__main__":
+    names = ["shinji"]
+
+    asyncio.run(test1(names))
 
     asyncio.run(list_users())
