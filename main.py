@@ -1,7 +1,8 @@
-from agents import set_default_openai_key, Agent, Runner, RunContextWrapper
+from agents import set_default_openai_key, Agent, Runner, RunContextWrapper, handoff
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
+from typing import Optional
 import os
 import asyncio
 import sys
@@ -9,7 +10,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich import print as rprint
 from datetime import datetime
-import graph
+from graph_utils import schedule_meeting, get_user_info
+
 
 
 load_dotenv()
@@ -18,17 +20,25 @@ load_dotenv()
 api_key = os.getenv("OPENAI_KEY")
 set_default_openai_key(api_key)
 
-@dataclass
-class ScheduleMeetingOutput(BaseModel):
-    """Class for structuring the output to schedule a meeting through teams by using Microsoft Graph api"""
+class IntentParserOutput(BaseModel):
+    """Class for structuring the output to parse the intent of a meeting through teams by using Microsoft Graph api"""
     subject: str = Field(description="Meeting subject/title")
     start_date_time: str = Field(description="Start time in ISO 8601 format")
     start_time_zone: str = Field(description="Microsoft Graph compatible windows time zone")
     end_date_time: str = Field(description="End time in ISO 8601 format")
     end_time_zone: str = Field(description="Microsoft Graph compatible windows time zone")
-    attendees: list[str] = Field(description="List of attendee email addresses")
+    attendees: list[str] = Field(description="List of attendee names")
     description: str = Field(description="Meeting description/body")
     location: str = Field(description="Meeting location")
+
+
+class ScheduleMeetingOutput(BaseModel):
+    """Class for structuring the meeting event output created"""
+    id: str
+    subject: str
+    start: str = Field(description="ISO 8601 start time")
+    end: str = Field(description="ISO 8601 end time")
+    web_link: Optional[str] = Field(description="Link to join the meeting")
     
 class CurrentTime(BaseModel):
     current_time: str 
@@ -59,15 +69,22 @@ def dynamic_instructions(
     - UTC
 
     If time zone is not specified, default to "Pacific Standard Time".
-    If a meeting description is not provided, leave it empty.
+    If a meeting description is not provided, leave it empty. If the user wants to schedule a meeting, handoff to the scheduling agent 
     """
 
+# Scheduler_Agent = Agent(
+#     name="Scheduling Agent",
+#     instructions="Call the neccessary tools to schedule a meeting",
+#     tools=[
+#         schedule_meeting
+#     ]
+# )
 
 
-Scheduling_agent = Agent[CurrentTime](
-    name="Meeting Scheduling Assistant",
+IntentParser_Agent = Agent[CurrentTime](
+    name="Intent Parser Agent",
     instructions=dynamic_instructions,
-    output_type=ScheduleMeetingOutput
+    output_type=IntentParserOutput
 )
 
 
@@ -77,12 +94,14 @@ async def process_user_request(user_input):
     
     with console.status("[bold green]Processing your request..."):
         # Run the agent to understand the request
-        current_time = current_time(current_year=datetime.now())
-        result = await Runner.run(starting_agent=Scheduling_agent, 
-                                  input="I want to schedule a meeting on tomorrow 11am to 11:30 am pst with alice about negotiation deals surrounding the environment impact",
-                                  context=current_time)
-        meeting_details = result.final_output
-    
+        context_obj = CurrentTime(current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        result = await Runner.run(starting_agent=IntentParser_Agent, 
+                                  input=user_input,
+                                  context=context_obj)
+        meeting_details = result.final_output_as(IntentParserOutput)
+        scheduled = await schedule_meeting(meeting_details)
+        
+        return scheduled
     # # Show the extracted meeting details
     # console.print("\n[bold]Meeting Details Extracted:[/bold]")
     # console.print(f"Subject: {meeting_details.subject}")
@@ -175,7 +194,7 @@ async def authenticate_user():
     try:
         with console.status("[bold yellow]Authenticating with Microsoft Graph..."):
             # This will trigger the browser authentication flow
-            user_info = await graph.get_user_info()
+            user_info = await get_user_info()
         
         console.print(Panel.fit(
             f"Successfully authenticated as:\n[bold]{user_info['display_name']}[/bold] ({user_info['email']})",
@@ -225,11 +244,11 @@ async def main():
             show_help()
         else:
             # Process the user's request using the agent
-            await process_user_request(user_input)
+            return await process_user_request(user_input)
 
 async def test():
     context_obj = CurrentTime(current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    result = await Runner.run(starting_agent=Scheduling_agent, 
+    result = await Runner.run(starting_agent=IntentParser_Agent, 
                               input="I want to schedule a meeting next tuesday 11am to 11:30 am pst with alice about negotiation deals surrounding the environment impact",
                               context=context_obj)
     meeting_details = result.final_output
@@ -238,7 +257,7 @@ async def test():
 
 if __name__ == "__main__":
 
-    print(asyncio.run(test()))
+    print(asyncio.run(main()))
 
     # try:
     #     asyncio.run(main())
