@@ -10,7 +10,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich import print as rprint
 from datetime import datetime
-from graph_utils import schedule_meeting, get_user_info
+from utils import schedule_meeting, get_user_info, wait_for_auth_code
+import time
+import threading
+from server.autho_code_server import run_server, get_auth_code
+from azure.identity import AuthorizationCodeCredential
+from msgraph import GraphServiceClient
 
 
 

@@ -2,11 +2,12 @@ import asyncio
 import requests
 import time
 import threading
-from autho_code_server import run_server, get_auth_code
+from server.autho_code_server import run_server, get_auth_code
 from azure.identity import AuthorizationCodeCredential
 from msgraph import GraphServiceClient
 import os
 from dotenv import load_dotenv
+from models import IntentParserOutput
 
 load_dotenv()
 
@@ -51,9 +52,8 @@ async def main():
     )
     
     client = GraphServiceClient(credentials=credential, scopes=SCOPES)
-    results = await client.me.calendar.get()
-    print(results)
-
+    results = await client.me.events.get()
+    return results
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    print(asyncio.run(main()))
