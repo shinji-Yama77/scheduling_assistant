@@ -8,12 +8,13 @@ from msgraph import GraphServiceClient
 import os
 from dotenv import load_dotenv
 from models import IntentParserOutput
+from utils import resolve_emails_by_names, resolve_email_by_name
 
 load_dotenv()
 
 CLIENT_ID = os.getenv("CLIENT_ID")
 TENANT_ID = "common"
-SCOPES = ["User.Read"]
+SCOPES = ["User.Read", "User.ReadBasic.All"]
 REDIRECT_URI = "http://localhost:8000/callback"
 AUTHORITY = f"https://login.microsoftonline.com/common"
 
@@ -50,10 +51,14 @@ async def main():
         authorization_code=code,
         redirect_uri=REDIRECT_URI
     )
-    
+    names = ["alice", "shinji"]
     client = GraphServiceClient(credentials=credential, scopes=SCOPES)
-    results = await client.me.events.get()
-    return results
+    me = await client.me.get()
+    if me:
+        print(me.user_principal_name)
+
+    users = await client.users.get()
+    return await resolve_email_by_name(client, "shinji")
 
 if __name__ == "__main__":
     print(asyncio.run(main()))

@@ -1,4 +1,4 @@
-from agents import set_default_openai_key, Agent, Runner, RunContextWrapper, handoff
+from agents import set_default_openai_key, Agent, Runner, RunContextWrapper, handoff, ItemHelpers
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
@@ -10,12 +10,14 @@ from rich.console import Console
 from rich.panel import Panel
 from rich import print as rprint
 from datetime import datetime
-from utils import schedule_meeting, get_user_info, wait_for_auth_code
+from utils import schedule_meeting, get_user_info
 import time
 import threading
 from server.autho_code_server import run_server, get_auth_code
 from azure.identity import AuthorizationCodeCredential
 from msgraph import GraphServiceClient
+from test import wait_for_auth_code
+import requests
 
 
 
@@ -24,6 +26,12 @@ load_dotenv()
 
 api_key = os.getenv("OPENAI_KEY")
 set_default_openai_key(api_key)
+CLIENT_ID = os.getenv("CLIENT_ID")
+TENANT_ID = "common"
+SCOPES = ["User.Read"]
+REDIRECT_URI = "http://localhost:8000/callback"
+AUTHORITY = f"https://login.microsoftonline.com/common"
+
 
 class IntentParserOutput(BaseModel):
     """Class for structuring the output to parse the intent of a meeting through teams by using Microsoft Graph api"""
@@ -77,13 +85,13 @@ def dynamic_instructions(
     If a meeting description is not provided, leave it empty. If the user wants to schedule a meeting, handoff to the scheduling agent 
     """
 
-# Scheduler_Agent = Agent(
-#     name="Scheduling Agent",
-#     instructions="Call the neccessary tools to schedule a meeting",
-#     tools=[
-#         schedule_meeting
-#     ]
-# )
+Scheduler_Agent = Agent(
+    name="Scheduling Agent",
+    instructions="Call the neccessary tools to schedule a meeting",
+    tools=[
+        schedule_meeting
+    ]
+)
 
 
 IntentParser_Agent = Agent[CurrentTime](
@@ -104,9 +112,8 @@ async def process_user_request(user_input):
                                   input=user_input,
                                   context=context_obj)
         meeting_details = result.final_output_as(IntentParserOutput)
-        scheduled = await schedule_meeting(meeting_details)
+
         
-        return scheduled
     # # Show the extracted meeting details
     # console.print("\n[bold]Meeting Details Extracted:[/bold]")
     # console.print(f"Subject: {meeting_details.subject}")
@@ -185,84 +192,107 @@ def show_help():
     ))
 
 
-async def authenticate_user():
-    """Authenticate the user with Microsoft Graph API"""
-    console = Console()
+# async def authenticate_user():
+#     """Authenticate the user with Microsoft Graph API"""
+#     console = Console()
     
-    console.print(Panel.fit(
-        "This application requires access to your Microsoft account to schedule meetings.\n"
-        "A browser window will open for you to sign in.",
-        title="Authentication Required",
-        border_style="yellow"
-    ))
+#     console.print(Panel.fit(
+#         "This application requires access to your Microsoft account to schedule meetings.\n"
+#         "A browser window will open for you to sign in.",
+#         title="Authentication Required",
+#         border_style="yellow"
+#     ))
     
-    try:
-        with console.status("[bold yellow]Authenticating with Microsoft Graph..."):
-            # This will trigger the browser authentication flow
-            user_info = await get_user_info()
+#     try:
+#         with console.status("[bold yellow]Authenticating with Microsoft Graph..."):
+#             # This will trigger the browser authentication flow
+#             user_info = await get_user_info()
         
-        console.print(Panel.fit(
-            f"Successfully authenticated as:\n[bold]{user_info['display_name']}[/bold] ({user_info['email']})",
-            title="Authentication Successful",
-            border_style="green"
-        ))
-        return True
-    except Exception as e:
-        console.print(Panel.fit(
-            f"Authentication failed: {str(e)}\n\nPlease restart the application and try again.",
-            title="Authentication Error",
-            border_style="red"
-        ))
-        return False
+#         console.print(Panel.fit(
+#             f"Successfully authenticated as:\n[bold]{user_info['display_name']}[/bold] ({user_info['email']})",
+#             title="Authentication Successful",
+#             border_style="green"
+#         ))
+#         return True
+#     except Exception as e:
+#         console.print(Panel.fit(
+#             f"Authentication failed: {str(e)}\n\nPlease restart the application and try again.",
+#             title="Authentication Error",
+#             border_style="red"
+#         ))
+#         return False
 
 
-async def main():
-    """Main application function"""
-    console = Console()
+# async def main():
+#     """Main application function"""
+#     console = Console()
     
-    # First ensure user is authenticated
-    is_authenticated = await authenticate_user()
-    if not is_authenticated:
-        return
+#     # First ensure user is authenticated
+#     is_authenticated = await authenticate_user()
+#     if not is_authenticated:
+#         return
     
-    # Show welcome message
-    rprint(Panel.fit(
-        "This AI assistant can help schedule meetings using natural language.\n"
-        "Simply describe the meeting you want to schedule, and the assistant will do the rest.\n"
-        "Type 'help' to see example commands or 'exit' to quit.",
-        title="Meeting Scheduling Assistant",
-        border_style="green"
-    ))
+#     # Show welcome message
+#     rprint(Panel.fit(
+#         "This AI assistant can help schedule meetings using natural language.\n"
+#         "Simply describe the meeting you want to schedule, and the assistant will do the rest.\n"
+#         "Type 'help' to see example commands or 'exit' to quit.",
+#         title="Meeting Scheduling Assistant",
+#         border_style="green"
+#     ))
     
-    # Interactive session
-    while True:
-        console.print("\n[bold blue]What can I help you schedule? >[/bold blue] ", end="")
-        user_input = input()
+#     # Interactive session
+#     while True:
+#         console.print("\n[bold blue]What can I help you schedule? >[/bold blue] ", end="")
+#         user_input = input()
         
-        if not user_input.strip():
-            continue
+#         if not user_input.strip():
+#             continue
         
-        if user_input.lower() == "exit":
-            console.print("[yellow]Thank you for using the Meeting Scheduling Assistant. Goodbye![/yellow]")
-            break
-        elif user_input.lower() == "help":
-            show_help()
-        else:
-            # Process the user's request using the agent
-            return await process_user_request(user_input)
+#         if user_input.lower() == "exit":
+#             console.print("[yellow]Thank you for using the Meeting Scheduling Assistant. Goodbye![/yellow]")
+#             break
+#         elif user_input.lower() == "help":
+#             show_help()
+#         else:
+#             # Process the user's request using the agent
+#             return await process_user_request(user_input)
 
 async def test():
+    # Run the Flask server in a background thread
+    thread = threading.Thread(target=run_server, daemon=True)
+    thread.start()
+
+    # Trigger the auth URL
+    requests.get("http://localhost:8000")
+
+    # Wait for the user to log in and capture the code
+    code = await wait_for_auth_code()
+    
+    credential = AuthorizationCodeCredential(
+        client_id=CLIENT_ID,
+        tenant_id=TENANT_ID,
+        authorization_code=code,
+        redirect_uri=REDIRECT_URI
+    )
+    
+    client = GraphServiceClient(credentials=credential, scopes=SCOPES)
+
     context_obj = CurrentTime(current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     result = await Runner.run(starting_agent=IntentParser_Agent, 
-                              input="I want to schedule a meeting next tuesday 11am to 11:30 am pst with alice about negotiation deals surrounding the environment impact",
+                              input="I want to schedule a meeting next thursday 12PM to 12:30PM pst with alice about Japanese tutoring class",
                               context=context_obj)
     meeting_details = result.final_output
-    return meeting_details
+    
+    return await schedule_meeting(client, meeting_details)
+
+
+    
 
 
 if __name__ == "__main__":
 
-    print(asyncio.run(main()))
+    print(asyncio.run(test()))
 
     # try:
     #     asyncio.run(main())

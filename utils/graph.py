@@ -44,25 +44,25 @@ load_dotenv()
 
 
 
-TENANT_ID = os.getenv("TENANT_ID")
-CLIENT_ID = os.getenv("CLIENT_ID")
+# TENANT_ID = os.getenv("TENANT_ID")
+# CLIENT_ID = os.getenv("CLIENT_ID")
 
-authority = f"https://login.microsoftonline.com/{TENANT_ID}"
+# authority = f"https://login.microsoftonline.com/{TENANT_ID}"
 
-credentials = InteractiveBrowserCredential(
-    client_id=CLIENT_ID,
-    tenant_id=TENANT_ID,
-    redirect_uri="http://localhost:8400"
-)
+# credentials = InteractiveBrowserCredential(
+#     client_id=CLIENT_ID,
+#     tenant_id=TENANT_ID,
+#     redirect_uri="http://localhost:8400"
+# )
 
 
 # permissions that needs to be configured
 # scopes = ["User.Read", "User.ReadBasic.All", "Calendars.Read"]
 # client = GraphServiceClient(credentials=credentials, scopes=scopes)
 
-token = credentials.get_token("https://graph.microsoft.com/.default")
-access_token = token.token
-print(token)
+# token = credentials.get_token("https://graph.microsoft.com/.default")
+# access_token = token.token
+# print(token)
 
 
 # # get logged in user information
@@ -108,7 +108,7 @@ async def get_events():
 async def resolve_email_by_name(client: GraphServiceClient, name: str):
     try:
         query_params = UsersRequestBuilder.UsersRequestBuilderGetQueryParameters(
-            filter=f"startswith(givenName, '{name}')",
+            filter=f"startswith(givenName, '{name}') eq true",
         )
         request_configuration = RequestConfiguration(query_parameters=query_params)
         result = await client.users.get(request_configuration=request_configuration)
@@ -130,7 +130,7 @@ async def resolve_emails_by_names(client: GraphServiceClient, names: list[str]):
     return [email for email in results if email]
 
 # schedules a meeting
-async def schedule_meeting(details: IntentParserOutput):
+async def schedule_meeting(client: GraphServiceClient, details: IntentParserOutput):
     """
     Schedule a meeting using Microsoft Graph API
     
@@ -194,11 +194,9 @@ async def schedule_meeting(details: IntentParserOutput):
     }
 
 
-
-
 # For testing the module directly
 if __name__ == "__main__":
-    # names = ["alice", "shinji"]
+    names = ["alice", "shinji"]
     # #asyncio.run(list_users())
     # emails = asyncio.run(resolve_emails_by_names(client, names))
     # for name, email in zip(names, emails):
